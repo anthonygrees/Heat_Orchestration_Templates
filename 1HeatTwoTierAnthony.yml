@@ -1,0 +1,134 @@
+heat_template_version: 2013-05-23
+description: >
+  A simple Heat template that spins up multiple instances and a private network (HOT template in YAML). u8
+
+parameters:
+
+  key_name:
+    type: string
+    description : Name of a KeyPair to enable SSH access to the instance
+    default: default
+  instance_type:
+    type: string
+    description: Instance type 
+    default: m1.small
+  image_id:
+    type: string
+    default: debian-wheezy-amd64-20140929-disk
+  ext_net_id:
+    type: string
+    default: 20b9d1fb-e843-4ae5-b277-6b0498908639
+
+
+resources:
+  heat_sg:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      description: Test group to demonstrate Neutron security group functionality with Heat.
+      name: heat-demo-security-group
+      rules: [
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: tcp,
+        port_range_min: 22,
+        port_range_max: 22},
+        {remote_ip_prefix: 0.0.0.0/0,
+        protocol: icmp}]
+    
+ 
+  heat_network_01:
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: true
+      name: Anthony-network-01
+  heat_subnet_01:
+    type: OS::Neutron::Subnet
+    properties:
+      name: heat-subnet-01
+      cidr: 12.11.10.0/24
+      dns_nameservers: [8.8.8.8,8.8.4.4]
+      enable_dhcp: true
+      gateway_ip: 12.11.10.254
+      network_id: { get_resource: heat_network_01 }
+  heat_network_02:
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: true
+      name: Anthony-network-02
+  heat_subnet_02:
+    type: OS::Neutron::Subnet
+    properties:
+      name: heat-subnet-02
+      cidr: 12.11.11.0/24
+      dns_nameservers: [8.8.8.8,8.8.4.4]
+      enable_dhcp: true
+      gateway_ip: 12.11.11.254
+      network_id: { get_resource: heat_network_02 }
+  heat_router_01:
+    type: OS::Neutron::Router
+    properties:
+      admin_state_up: true
+      name: Anthony-router-01
+  heat_router_01_gw:
+    type: OS::Neutron::RouterGateway
+    properties:
+      network_id: {get_param: ext_net_id}
+      router_id: { get_resource: heat_router_01 }
+  heat_router_int0:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: heat_router_01 }
+      subnet_id: { get_resource: heat_subnet_01 }
+  heat_router_int1:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: heat_router_01 }
+      subnet_id: { get_resource: heat_subnet_02 }
+  instance0_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: heat_network_01 }
+      security_groups: [{ get_resource: heat_sg }]
+        
+  instance1_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: heat_network_01 }
+      security_groups: [{ get_resource: heat_sg }]
+  instance2_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: heat_network_02 }
+      security_groups: [{ get_resource: heat_sg }]
+    
+  instance0:
+    type: OS::Nova::Server
+    properties:
+      name: Anthony-Web-instance-01
+      image: {get_param: image_id}
+      flavor: {get_param: instance_type}
+      networks:
+        - port: { get_resource: instance0_port0 }
+  instance1:
+    type: OS::Nova::Server
+    properties:
+      name: Anthony-Web-instance-02
+      image: {get_param: image_id}
+      flavor: {get_param: instance_type}
+      networks:
+        - port: { get_resource: instance1_port0 }
+  instance2:
+    type: OS::Nova::Server
+    properties:
+      name: Anthony-DB-instance-03
+      image: {get_param: image_id}
+      flavor: {get_param: instance_type}
+      networks:
+        - port: { get_resource: instance2_port0 }
+        
+outputs:
+  single_console_type:
+    value: { get_attr: instance0, console_urls, novnc }
+    description: console URL for the instance0 (novnc in this case)

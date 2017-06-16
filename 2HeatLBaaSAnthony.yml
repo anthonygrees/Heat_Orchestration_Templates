@@ -1,0 +1,105 @@
+heat_template_version: 2015-10-15
+
+description: A Group of Load Balanced Servers
+
+parameters:
+
+  app_port:
+    type: number
+    default: 80
+    description: Port used by applications
+  lb_port:
+    type: number
+    default: 80
+    description: Port used by the load balancer
+  lb_provider:
+    type: string
+    default: octavia
+    description: Load balancer Provider
+
+  lb_1st_member:
+    type: string
+    description: IP address of 1st memeber
+
+  lb_2nd_member:
+    type: string
+    description: IP address of 2nd memeber
+
+  public_network:
+    type: string
+    default: ext-net
+    description: Network used by the load balancer
+    constraints:
+    - custom_constraint: neutron.network
+
+  subnet:
+    type: string
+    description: Subnet on which the load balancer will be located
+    constraints:
+    - custom_constraint: neutron.subnet
+
+resources:
+
+  loadbalancer:
+    type: OS::Neutron::LBaaS::LoadBalancer
+    properties:
+      vip_subnet: { get_param: subnet }
+      provider: { get_param: lb_provider }
+
+  listener:
+    type: OS::Neutron::LBaaS::Listener
+    properties:
+      loadbalancer: { get_resource: loadbalancer }
+      protocol: HTTP
+      protocol_port: { get_param: lb_port }
+
+  pool:
+    type: OS::Neutron::LBaaS::Pool
+    properties:
+      lb_algorithm: ROUND_ROBIN
+      protocol: HTTP
+      listener: { get_resource: listener }
+
+  pool_member1:
+    type: OS::Neutron::LBaaS::PoolMember
+    properties:
+      pool: { get_resource: pool }
+      address: { get_param: lb_1st_member }
+      protocol_port: { get_param: app_port }
+      subnet: { get_param: subnet }
+
+  pool_member2:
+    type: OS::Neutron::LBaaS::PoolMember
+    properties:
+      pool: { get_resource: pool }
+      address: { get_param: lb_2nd_member }
+      protocol_port: { get_param: app_port }
+      subnet: { get_param: subnet }
+
+  monitor:
+    type: OS::Neutron::LBaaS::HealthMonitor
+    properties:
+      delay: 3
+      type: HTTP
+      timeout: 3
+      max_retries: 3
+      pool: { get_resource: pool }
+
+  floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network: { get_param: public_network }
+      port_id: { get_attr: [loadbalancer, vip_port_id ]}
+
+outputs:
+
+  lburl:
+    value:
+      str_replace:
+        template: http://IP_ADDRESS:PORT
+        params:
+          IP_ADDRESS: { get_attr: [ floating_ip, floating_ip_address ] }
+          PORT: { get_param: lb_port }
+    description: >
+      This URL is the "external" URL that can be used to access the
+      load balancer.
